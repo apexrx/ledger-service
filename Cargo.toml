@@ -1,0 +1,13 @@
+[package]
+name = "ledger-service"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.8"
+dotenvy = "0.15.7"
+jsonwebtoken = "10.3.0"
+sea-orm = { version = "1.1.20", features = ["sqlx-postgres", "runtime-tokio-rustls"]}
+serde = { version = "1.0.228", features = ["derive"]}
+serde_json = "1.0.149"
+tokio = { version = "1.50.0", features = ["full"]}
