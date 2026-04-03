@@ -1,7 +1,9 @@
-use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, Json, routing::get};
+use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, Json, routing::{get, post}};
 use dotenvy::dotenv;
 use sea_orm::Database;
 use serde_json::json;
+
+mod handlers;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -33,6 +35,8 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/db-status", get(db_status_handler))
+        .route("/auth/register", post(handlers::auth::register_handler))
+        .route("/auth/login", post(handlers::auth::login_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
