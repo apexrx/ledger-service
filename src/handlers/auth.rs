@@ -6,30 +6,22 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use uuid::Uuid;
 
-use super::super::AppState;
+use crate::AppState;
+use crate::middleware::auth::Claims;
+use crate::entities::role::Role;
+use crate::services::user_service;
 
-use ledger_service::entities::role::Role;
-use ledger_service::services::user_service;
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Claims {
-    pub user_id: Uuid,
-    pub role: Role,
-    pub exp: usize,
 }
 
 pub async fn register_handler(

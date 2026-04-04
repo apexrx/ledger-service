@@ -1,13 +1,29 @@
-use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, Json, routing::{get, post}};
+use axum::{Router, extract::State, http::StatusCode, middleware, response::IntoResponse, Json, routing::{get, post, put, delete}};
 use dotenvy::dotenv;
+use ledger_service::{AppState, handlers, middleware::auth};
 use sea_orm::Database;
 use serde_json::json;
 
-mod handlers;
+fn user_routes() -> Router<AppState> {
+    Router::new()
+        .route("/{id}/role", put(handlers::user_handler::update_role))
+        .route("/{id}", delete(handlers::user_handler::delete_user))
+        .route_layer(middleware::from_fn(auth::require_admin))
+        .route_layer(middleware::from_fn(auth::require_auth))
+}
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: sea_orm::DatabaseConnection,
+fn record_routes() -> Router<AppState> {
+    let read_routes = Router::new()
+        .route("/", get(handlers::record_handler::list_records));
+
+    let write_routes = Router::new()
+        .route("/", post(handlers::record_handler::create_record))
+        .route("/{id}", put(handlers::record_handler::update_record).delete(handlers::record_handler::delete_record))
+        .route_layer(middleware::from_fn(auth::require_analyst_or_admin));
+
+    read_routes
+        .merge(write_routes)
+        .route_layer(middleware::from_fn(auth::require_auth))
 }
 
 #[tokio::main]
@@ -37,6 +53,8 @@ async fn main() {
         .route("/db-status", get(db_status_handler))
         .route("/auth/register", post(handlers::auth::register_handler))
         .route("/auth/login", post(handlers::auth::login_handler))
+        .nest("/users", user_routes())
+        .nest("/records", record_routes())
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
