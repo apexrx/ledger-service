@@ -26,6 +26,15 @@ fn record_routes() -> Router<AppState> {
         .route_layer(middleware::from_fn(auth::require_auth))
 }
 
+fn dashboard_routes() -> Router<AppState> {
+    Router::new()
+        .route("/summary", get(handlers::dashboard_handler::summary_handler))
+        .route("/categories", get(handlers::dashboard_handler::category_summary_handler))
+        .route("/trends", get(handlers::dashboard_handler::trends_handler))
+        .route("/recent", get(handlers::dashboard_handler::recent_records_handler))
+        .route_layer(middleware::from_fn(auth::require_auth))
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -55,6 +64,7 @@ async fn main() {
         .route("/auth/login", post(handlers::auth::login_handler))
         .nest("/users", user_routes())
         .nest("/records", record_routes())
+        .nest("/dashboard", dashboard_routes())
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")

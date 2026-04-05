@@ -45,9 +45,13 @@ pub async fn create_record(
 
 pub async fn soft_delete_record(
     db: &DatabaseConnection,
+    user_id: Uuid,
     record_id: Uuid,
 ) -> Result<Model, DbErr> {
-    let record = financial_records::Entity::find_by_id(record_id)
+    let record = financial_records::Entity::find()
+        .filter(financial_records::Column::Id.eq(record_id))
+        .filter(financial_records::Column::UserId.eq(user_id))
+        .filter(financial_records::Column::DeletedAt.is_null())
         .one(db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))?;
@@ -60,6 +64,7 @@ pub async fn soft_delete_record(
 
 pub async fn update_record(
     db: &DatabaseConnection,
+    user_id: Uuid,
     record_id: Uuid,
     amount: Option<rust_decimal::Decimal>,
     r#type: Option<RecordType>,
@@ -67,7 +72,10 @@ pub async fn update_record(
     notes: Option<Option<String>>,
     date: Option<chrono::NaiveDate>,
 ) -> Result<Model, DbErr> {
-    let record = financial_records::Entity::find_by_id(record_id)
+    let record = financial_records::Entity::find()
+        .filter(financial_records::Column::Id.eq(record_id))
+        .filter(financial_records::Column::UserId.eq(user_id))
+        .filter(financial_records::Column::DeletedAt.is_null())
         .one(db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))?;
@@ -92,6 +100,20 @@ pub async fn update_record(
     active_record.updated_at = Set(Utc::now().into());
 
     active_record.update(db).await
+}
+
+pub async fn get_record(
+    db: &DatabaseConnection,
+    user_id: Uuid,
+    record_id: Uuid,
+) -> Result<Model, DbErr> {
+    financial_records::Entity::find()
+        .filter(financial_records::Column::Id.eq(record_id))
+        .filter(financial_records::Column::UserId.eq(user_id))
+        .filter(financial_records::Column::DeletedAt.is_null())
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))
 }
 
 pub async fn list_records(

@@ -38,7 +38,7 @@ async fn test_soft_delete_excludes_from_list() {
         .expect("Failed to list records");
     assert_eq!(records_before.len(), 1, "Should have one record before soft delete");
 
-    let deleted_record = record_service::soft_delete_record(&db, record.id)
+    let deleted_record = record_service::soft_delete_record(&db, user.id, record.id)
         .await
         .expect("Failed to soft delete record");
     assert!(
