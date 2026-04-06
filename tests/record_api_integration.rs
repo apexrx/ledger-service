@@ -412,7 +412,7 @@ async fn test_record_lifecycle() {
         .await
         .unwrap();
 
-    assert_eq!(get_deleted_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(get_deleted_resp.status(), StatusCode::NOT_FOUND);
 
     let list_resp = app
         .clone()

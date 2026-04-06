@@ -143,8 +143,8 @@ async fn test_login_wrong_password() {
 
     let body = login_response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["status"], "error");
-    assert_eq!(json["message"], "Invalid email or password");
+    assert_eq!(json["error"], "Authentication required");
+    assert_eq!(json["details"]["detail"], "Invalid email or password");
 }
 
 #[tokio::test]
@@ -420,4 +420,99 @@ async fn test_analyst_can_modify_records() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// Proves the full end-to-end RBAC flow: a freshly registered user defaults to
+/// Viewer, logs in for a real JWT, and gets FORBIDDEN when trying to create a
+/// financial record through the actual handler (not a stub).
+#[tokio::test]
+async fn test_viewer_cannot_create_record() {
+    use ledger_service::handlers::record_handler;
+    use ledger_service::middleware::auth as auth_middleware;
+
+    let db = setup_db().await;
+
+    // Build the real record write route with the actual create_record handler
+    let state = AppState { db: db.clone() };
+    let record_app = Router::new()
+        .route("/records", post(record_handler::create_record))
+        .route_layer(middleware::from_fn(auth_middleware::require_analyst_or_admin))
+        .route_layer(middleware::from_fn(auth_middleware::require_auth))
+        .with_state(state);
+
+    // Step 1: Register a new user (defaults to Viewer)
+    let register_payload = RegisterRequest {
+        email: "newbie@example.com".to_string(),
+        password: "strongpass".to_string(),
+    };
+
+    let register_response = app(db.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/register")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&register_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(register_response.status(), StatusCode::CREATED);
+
+    // Step 2: Login to get a real JWT token
+    let login_payload = LoginRequest {
+        email: "newbie@example.com".to_string(),
+        password: "strongpass".to_string(),
+    };
+
+    let login_response = app(db)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&login_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(login_response.status(), StatusCode::OK);
+
+    let body = login_response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let token = json["token"].as_str().expect("Login should return a token").to_string();
+
+    // Step 3: Use the token to try creating a record
+    let record_payload = serde_json::json!({
+        "amount": "500.00",
+        "type": "income",
+        "category": "Freelance",
+        "date": "2026-04-06"
+    });
+
+    let response = record_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/records")
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&record_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Step 4: Assert FORBIDDEN -- Viewer role cannot create records
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "Viewer role should be forbidden from creating records"
+    );
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error_json["error"], "Access denied");
 }

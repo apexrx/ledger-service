@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
     QueryFilter, Set,
 };
 use uuid::Uuid;
@@ -9,6 +9,7 @@ use crate::entities::{
     financial_records::{self, Model},
     record_type::RecordType,
 };
+use crate::error::AppError;
 
 pub async fn create_record(
     db: &DatabaseConnection,
@@ -18,7 +19,7 @@ pub async fn create_record(
     category: String,
     notes: Option<String>,
     date: chrono::NaiveDate,
-) -> Result<Model, DbErr> {
+) -> Result<Model, AppError> {
     let record_id = Uuid::new_v4();
     let now = Utc::now();
 
@@ -40,26 +41,26 @@ pub async fn create_record(
     financial_records::Entity::find_by_id(record_id)
         .one(db)
         .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Record not found after insert".to_string()))
+        .ok_or_else(|| AppError::internal("Record not found after insert".to_string()))
 }
 
 pub async fn soft_delete_record(
     db: &DatabaseConnection,
     user_id: Uuid,
     record_id: Uuid,
-) -> Result<Model, DbErr> {
+) -> Result<Model, AppError> {
     let record = financial_records::Entity::find()
         .filter(financial_records::Column::Id.eq(record_id))
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
         .one(db)
         .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))?;
+        .ok_or_else(|| AppError::not_found("Record not found".to_string()))?;
 
     let mut active_record: financial_records::ActiveModel = record.into_active_model();
     active_record.deleted_at = Set(Some(Utc::now().into()));
 
-    active_record.update(db).await
+    active_record.update(db).await.map_err(AppError::from)
 }
 
 pub async fn update_record(
@@ -71,14 +72,14 @@ pub async fn update_record(
     category: Option<String>,
     notes: Option<Option<String>>,
     date: Option<chrono::NaiveDate>,
-) -> Result<Model, DbErr> {
+) -> Result<Model, AppError> {
     let record = financial_records::Entity::find()
         .filter(financial_records::Column::Id.eq(record_id))
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
         .one(db)
         .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))?;
+        .ok_or_else(|| AppError::not_found("Record not found".to_string()))?;
 
     let mut active_record: financial_records::ActiveModel = record.into_active_model();
 
@@ -99,21 +100,21 @@ pub async fn update_record(
     }
     active_record.updated_at = Set(Utc::now().into());
 
-    active_record.update(db).await
+    active_record.update(db).await.map_err(AppError::from)
 }
 
 pub async fn get_record(
     db: &DatabaseConnection,
     user_id: Uuid,
     record_id: Uuid,
-) -> Result<Model, DbErr> {
+) -> Result<Model, AppError> {
     financial_records::Entity::find()
         .filter(financial_records::Column::Id.eq(record_id))
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
         .one(db)
         .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Record not found".to_string()))
+        .ok_or_else(|| AppError::not_found("Record not found".to_string()))
 }
 
 pub async fn list_records(
@@ -123,7 +124,7 @@ pub async fn list_records(
     category: Option<String>,
     start_date: Option<chrono::NaiveDate>,
     end_date: Option<chrono::NaiveDate>,
-) -> Result<Vec<Model>, DbErr> {
+) -> Result<Vec<Model>, AppError> {
     let mut query = financial_records::Entity::find()
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null());
@@ -141,5 +142,5 @@ pub async fn list_records(
         query = query.filter(financial_records::Column::Date.lte(end));
     }
 
-    query.all(db).await
+    query.all(db).await.map_err(AppError::from)
 }

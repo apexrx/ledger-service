@@ -1,7 +1,8 @@
-use sea_orm::{sea_query::Expr, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 
 use crate::entities::{financial_records, record_type::RecordType};
+use crate::error::AppError;
 
 #[derive(FromQueryResult)]
 struct SummaryRow {
@@ -18,7 +19,7 @@ pub struct DashboardSummary {
 pub async fn get_summary(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
-) -> Result<DashboardSummary, DbErr> {
+) -> Result<DashboardSummary, AppError> {
     let rows: Vec<SummaryRow> = financial_records::Entity::find()
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
@@ -67,7 +68,7 @@ pub struct CategorySummaryRow {
 pub async fn get_category_summary(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
-) -> Result<Vec<CategorySummaryRow>, DbErr> {
+) -> Result<Vec<CategorySummaryRow>, AppError> {
     let raw_rows: Vec<CategorySummaryRaw> = financial_records::Entity::find()
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
@@ -111,7 +112,7 @@ pub struct TrendSummaryRow {
 pub async fn get_trends(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
-) -> Result<Vec<TrendSummaryRow>, DbErr> {
+) -> Result<Vec<TrendSummaryRow>, AppError> {
     let raw_rows: Vec<TrendSummaryRaw> = financial_records::Entity::find()
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
@@ -141,7 +142,7 @@ pub async fn get_trends(
 pub async fn get_recent_records(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
-) -> Result<Vec<financial_records::Model>, DbErr> {
+) -> Result<Vec<financial_records::Model>, AppError> {
     financial_records::Entity::find()
         .filter(financial_records::Column::UserId.eq(user_id))
         .filter(financial_records::Column::DeletedAt.is_null())
@@ -149,4 +150,5 @@ pub async fn get_recent_records(
         .limit(5)
         .all(db)
         .await
+        .map_err(AppError::from)
 }

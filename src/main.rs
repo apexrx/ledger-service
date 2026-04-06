@@ -1,12 +1,14 @@
-use axum::{Router, extract::State, http::StatusCode, middleware, response::IntoResponse, Json, routing::{get, post, put, delete}};
+use axum::{Router, extract::State, http::StatusCode, middleware, response::IntoResponse, Json, routing::{get, post, put, patch, delete}};
 use dotenvy::dotenv;
-use ledger_service::{AppState, handlers, middleware::auth};
+use ledger_service::{AppState, handlers, middleware::auth, error::AppError};
 use sea_orm::Database;
 use serde_json::json;
 
 fn user_routes() -> Router<AppState> {
     Router::new()
+        .route("/", get(handlers::user_handler::list_users).post(handlers::user_handler::create_user))
         .route("/{id}/role", put(handlers::user_handler::update_role))
+        .route("/{id}/status", patch(handlers::user_handler::update_user_status))
         .route("/{id}", delete(handlers::user_handler::delete_user))
         .route_layer(middleware::from_fn(auth::require_admin))
         .route_layer(middleware::from_fn(auth::require_auth))
@@ -80,22 +82,14 @@ async fn health_handler() -> impl IntoResponse {
     (StatusCode::OK, "OK")
 }
 
-async fn db_status_handler(State(state): State<AppState>) -> impl IntoResponse {
-    match state.db.ping().await {
-        Ok(_) => (
-            StatusCode::OK,
-            Json(json!({
-                "status": "healthy",
-                "database": "connected"
-            })),
-        ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "status": "unhealthy",
-                "database": "disconnected",
-                "error": e.to_string()
-            })),
-        ),
-    }
+async fn db_status_handler(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
+    state.db.ping().await?;
+    
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "status": "healthy",
+            "database": "connected"
+        })),
+    ))
 }
